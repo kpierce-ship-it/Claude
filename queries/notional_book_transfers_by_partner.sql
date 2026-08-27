@@ -15,7 +15,7 @@
 SELECT * FROM EXTERNAL_QUERY("first-dollar-app.us.first-dollar-app-bq-external-connection", """
 select
 ofe.id as funding_event_id,
-ofe.public_id,
+ofe.public_id::text as public_id,
 ofe.external_payment_id,
 ofe.external_payment_status::text,
 ofe.status::text as funding_event_status,
