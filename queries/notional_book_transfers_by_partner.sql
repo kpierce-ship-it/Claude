@@ -16,12 +16,10 @@
 -- Postgres side only has the raw `calculation_snapshot` JSONB blob — the
 -- flattened calc_* columns (calc_threshold_pct, calc_required_floor, etc.)
 -- only exist on the refined BigQuery mirror, derived from this same JSON.
--- I don't have the live JSON's exact key names confirmed, so:
---   - threshold_dollar_amount below tries a few likely RMF-related key names
---     via COALESCE and will be NULL if none of them match.
---   - calculation_snapshot_raw exposes the full JSON so you can read off the
---     real key name and I can tighten the COALESCE (or you can swap the key
---     in directly).
+-- Confirmed against live data: it's nested under an "rmf" object, camelCase:
+--   calculation_snapshot->'rmf'->>'thresholdDollarAmount'
+-- (there's also a sibling emergencyThresholdDollarAmount under the same
+-- "rmf" object, not currently pulled here.)
 
 SELECT * FROM EXTERNAL_QUERY("first-dollar-app.us.first-dollar-app-bq-external-connection", """
 select
@@ -41,13 +39,7 @@ nfa.account_id as receiving_account_id,
 org.name as organization_name,
 oorg.name as division_name,
 ptnr.short_code as partner,
-coalesce(
-  ofe.calculation_snapshot->>'rmf_threshold_dollar_amount',
-  ofe.calculation_snapshot->>'threshold_dollar_amount',
-  ofe.calculation_snapshot->>'rmf_threshold_amount',
-  ofe.calculation_snapshot->>'required_floor'
-)::numeric as threshold_dollar_amount,
-ofe.calculation_snapshot::text as calculation_snapshot_raw
+(ofe.calculation_snapshot->'rmf'->>'thresholdDollarAmount')::numeric as threshold_dollar_amount
 from offering_funding_events ofe
 join offerings o on o.id = ofe.offering_id
 join notional_funding_accounts nfa on nfa.id = ofe.funding_account_id
