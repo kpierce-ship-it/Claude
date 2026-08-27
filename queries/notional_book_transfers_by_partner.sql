@@ -37,6 +37,6 @@ join programs p on p.id = o.program_id
 join organizations org on org.id = p.organization_id
 join organizations oorg on oorg.id = o.organization_id
 join partners ptnr on ptnr.id = p.partner_id
-where ofe.external_payment_id like 'Book\_%' escape '\'
+where left(ofe.external_payment_id, 5) = 'Book_'
 order by ofe.created_at desc
 """);
