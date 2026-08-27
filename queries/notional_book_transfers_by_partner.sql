@@ -12,21 +12,14 @@
 -- ASSUMPTION TO VERIFY: `notional_funding_accounts` has an `account_id`
 -- column live, mirroring the confirmed `refined_notional_funding_accounts.account_id`.
 --
--- ThresholdDollarAmount / RMF threshold: offering_funding_events on the live
--- Postgres side only has the raw `calculation_snapshot` JSONB blob — the
--- flattened calc_* columns (calc_threshold_pct, calc_required_floor, etc.)
--- only exist on the refined BigQuery mirror, derived from this same JSON.
--- It's nested under an "rmf" object, camelCase:
---   calculation_snapshot->'rmf'->>'thresholdDollarAmount'
--- (there's also a sibling emergencyThresholdDollarAmount under the same
--- "rmf" object, not currently pulled here.)
---
--- CONFIRMED: book_ transfer settlement events have calculation_snapshot = null
--- — the RMF calc doesn't run on the transfer itself. So the threshold is
--- looked up via a LATERAL join: for each book_ row, take the most recent
--- funding event for the SAME offering, at or before this event's created_at,
--- that does carry a non-null rmf.thresholdDollarAmount. threshold_source_*
--- columns show which event the value was sourced from, for audit purposes.
+-- ThresholdDollarAmount / RMF threshold: NOT event data. It's a static
+-- per-offering setting stored in offerings.offering_config (jsonb), nested
+-- under "rmf", camelCase — offering_config->'rmf'->>'thresholdDollarAmount'.
+-- (Ruled out calculation_snapshot on offering_funding_events: that's null on
+-- book_ transfer settlement events, since the RMF calc doesn't re-run on the
+-- transfer itself — the config lives on the offering, not the event.)
+-- Falls back to offering_templates.offering_config if the offering doesn't
+-- override it. Sibling key emergencyThresholdDollarAmount is also pulled.
 
 SELECT * FROM EXTERNAL_QUERY("first-dollar-app.us.first-dollar-app-bq-external-connection", """
 select
@@ -46,28 +39,16 @@ nfa.account_id as receiving_account_id,
 org.name as organization_name,
 oorg.name as division_name,
 ptnr.short_code as partner,
-rmf.threshold_dollar_amount,
-rmf.source_funding_event_id as threshold_source_funding_event_id,
-rmf.source_created_at as threshold_source_created_at
+(coalesce(o.offering_config->'rmf'->>'thresholdDollarAmount', ot.offering_config->'rmf'->>'thresholdDollarAmount'))::numeric as threshold_dollar_amount,
+(coalesce(o.offering_config->'rmf'->>'emergencyThresholdDollarAmount', ot.offering_config->'rmf'->>'emergencyThresholdDollarAmount'))::numeric as emergency_threshold_dollar_amount
 from offering_funding_events ofe
 join offerings o on o.id = ofe.offering_id
+join offering_templates ot on ot.id = o.offering_template_id
 join notional_funding_accounts nfa on nfa.id = ofe.funding_account_id
 join programs p on p.id = o.program_id
 join organizations org on org.id = p.organization_id
 join organizations oorg on oorg.id = o.organization_id
 join partners ptnr on ptnr.id = p.partner_id
-left join lateral (
-  select
-    (x.calculation_snapshot->'rmf'->>'thresholdDollarAmount')::numeric as threshold_dollar_amount,
-    x.id as source_funding_event_id,
-    x.created_at as source_created_at
-  from offering_funding_events x
-  where x.offering_id = ofe.offering_id
-    and x.calculation_snapshot->'rmf'->>'thresholdDollarAmount' is not null
-    and x.created_at <= ofe.created_at
-  order by x.created_at desc
-  limit 1
-) rmf on true
 where left(ofe.external_payment_id, 5) = 'book_'
 order by ofe.created_at desc
 """);
