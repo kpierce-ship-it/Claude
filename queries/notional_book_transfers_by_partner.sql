@@ -6,11 +6,11 @@
 -- offering's notional funding account (notional_funding_accounts.account_id),
 -- which is what actually gets credited when the partner books funds in.
 --
--- ASSUMPTIONS TO VERIFY (not confirmed against the live schema this session):
---   1. The "Book_" prefix match is case-sensitive as given. If Treasury Prime
---      ever sends a different case, switch `like` to `ilike`.
---   2. `notional_funding_accounts` has an `account_id` column live, mirroring
---      the confirmed `refined_notional_funding_accounts.account_id` column.
+-- Confirmed against live data: external_payment_id uses a lowercase "book_"
+-- prefix (e.g. book_11n6hwwaaq16rbg), not "Book_".
+--
+-- ASSUMPTION TO VERIFY: `notional_funding_accounts` has an `account_id`
+-- column live, mirroring the confirmed `refined_notional_funding_accounts.account_id`.
 
 SELECT * FROM EXTERNAL_QUERY("first-dollar-app.us.first-dollar-app-bq-external-connection", """
 select
@@ -37,6 +37,6 @@ join programs p on p.id = o.program_id
 join organizations org on org.id = p.organization_id
 join organizations oorg on oorg.id = o.organization_id
 join partners ptnr on ptnr.id = p.partner_id
-where left(ofe.external_payment_id, 5) = 'Book_'
+where left(ofe.external_payment_id, 5) = 'book_'
 order by ofe.created_at desc
 """);
