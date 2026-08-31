@@ -1,7 +1,11 @@
 -- Bank gateway account transactions (deposits/withdrawals) for non-HSA offerings,
 -- with an ORG/DIV flag so you can tell top-level orgs apart from divisions.
 -- Live federated read (not the lagged `refined` mirror) via EXTERNAL_QUERY.
--- Edit the transaction_date range below before running.
+--
+-- Run via queries/run_bank_gateway_transactions_org_div.sh, which fills in
+-- __START_DATE__ / __END_DATE__ below. Running this file's SQL directly
+-- (e.g. copy-pasted into the BigQuery console) requires replacing those
+-- two placeholders with real dates ('YYYY-MM-DD') first.
 SELECT
   transaction_date,
   org_short_code,
@@ -39,7 +43,7 @@ FROM EXTERNAL_QUERY(
   JOIN organizations org ON org.id = o.organization_id
   WHERE CAST(ot.account_type AS TEXT) != 'HSA'
   AND CAST(bgat.transaction_type AS TEXT) IN ('DEPOSIT', 'WITHDRAWAL')
-  AND bgat.transaction_date BETWEEN '2026-08-22' AND '2026-08-24'
+  AND bgat.transaction_date BETWEEN '__START_DATE__' AND '__END_DATE__'
   ORDER BY bgat.id, part.short_code, org.name, bga.account_id, bgat.transaction_date
   """
 )
